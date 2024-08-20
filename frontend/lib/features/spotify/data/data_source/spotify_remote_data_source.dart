@@ -10,6 +10,7 @@ import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math';
+import 'package:url_launcher/url_launcher.dart';
 
 String generateRandomString(int length) {
   const chars =
@@ -28,7 +29,6 @@ final spotifyRemoteDatasourceProvider =
 );
 
 class SpotifyRemoteDataSource {
-
   final Dio dio;
   final UserSharedPrefs userSharedPrefs;
 
@@ -148,7 +148,10 @@ class SpotifyRemoteDataSource {
                     accessToken, playlistId, trackUris);
                 return addTracksResult.fold(
                   (failure) => Left(failure.error),
-                  (success) => const Right(true),
+                  (success) {
+                    _openPlaylist(playlistId);
+                    return const Right(true);
+                  },
                 );
               },
             );
@@ -166,6 +169,23 @@ class SpotifyRemoteDataSource {
     }
   }
 
+  Future<void> _openPlaylist(String playlistId) async {
+    final Uri spotifyUri = Uri.parse('spotify:playlist:$playlistId');
+ 
+
+    try {
+      if (await canLaunchUrl(spotifyUri)) {
+        // print('Trying to launch Spotify URI...');
+        await launchUrl(spotifyUri, mode: LaunchMode.externalApplication);
+      } else {
+        // print('Spotify URI not supported, trying web URL...');
+        await launchUrl(spotifyUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      // print('Error launching URL: $e');
+    }
+  }
+
   Future<String> getUserId(String accessToken) async {
     try {
       final response = await http.get(
@@ -177,18 +197,11 @@ class SpotifyRemoteDataSource {
       if (response.statusCode == 200) {
         final userProfile = jsonDecode(response.body);
         userSharedPrefs.setUserId(userProfile['id']);
-        // print('User Profile:');
-        // print('Display Name: ${userProfile['display_name']}');
-        // print('User ID: ${userProfile['id']}');
-        // print('Email: ${userProfile['email']}');
-        // print('---');
         return userProfile['id'];
       } else {
-        // print('Failed to fetch user profile: ${response.statusCode}');
         return "failed";
       }
     } catch (e) {
-      // print('Error fetching user profile: $e');
       return "failed";
     }
   }
@@ -208,9 +221,8 @@ class SpotifyRemoteDataSource {
       if (response.data != null && response.data.isNotEmpty) {
         // print('response.data type: ${response.data.runtimeType}');
 
-        List<String> data = response.data['playlist']
-            .map<String>((item) => item.toString())
-            .toList();
+        List<String> data =
+            response.data.map<String>((item) => item.toString()).toList();
 
         loginWithSpotify(data, prompt).then((value) => {
               value.fold((error) {
